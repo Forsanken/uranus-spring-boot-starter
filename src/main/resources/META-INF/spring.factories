@@ -1,0 +1,5 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.uranus.framework.config.AopAutoConfiguration,\
+  com.uranus.framework.config.RedisAutoConfiguration,\
+  com.uranus.framework.config.SwaggerAutoConfiguration,\
+  com.uranus.framework.config.WebMvcAutoConfiguration
