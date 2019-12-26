@@ -38,19 +38,10 @@ import java.io.IOException;
 @SuppressWarnings("unchecked")
 public class RedisConfig extends CachingConfigurerSupport{
 
-    @Bean
-    @ConditionalOnMissingBean(StringRedisTemplate.class)
-    public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
-        StringRedisTemplate template = new StringRedisTemplate();
-        template.setConnectionFactory(redisConnectionFactory);
-        return template;
-    }
-
-
     @Bean(name = "redisTemplate", value = "redisTemplate")
-    public <String, T> RedisTemplate<String, T> redisTemplate(RedisConnectionFactory factory) {
+    public <String, T> RedisTemplate<String, T> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
         RedisTemplate<String, T> template = new RedisTemplate<>();
-        template.setConnectionFactory(factory);
+        template.setConnectionFactory(redisConnectionFactory);
 
         //使用Jackson2JsonRedisSerializer来序列化和反序列化redis的value值
         Jackson2JsonRedisSerializer<Object> serializer = new Jackson2JsonRedisSerializer<>(Object.class);

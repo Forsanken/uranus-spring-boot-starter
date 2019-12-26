@@ -9,15 +9,15 @@
  */
 package com.uranus.framework.redis;
 
-import org.springframework.data.redis.core.RedisCallback;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.TimeoutUtils;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.*;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
 
-import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -34,23 +34,82 @@ import java.util.stream.Stream;
  * @date 2018/12/17
  * @since 1.0.0
  */
+@Getter
+@Slf4j
 @Component
 @SuppressWarnings("unchecked")
 public class RedisBaseDao<T> {
 
-    @Resource
+    @Autowired
+    @Qualifier("redisTemplate")
     private RedisTemplate<String, T> redisTemplate;
+
+    private ValueOperations<String, T> valueOper;
+
+    private SetOperations<String, T> setOper;
+
+    private ListOperations<String, T> listOper;
+
+    private HashOperations<String, Object, T> hashOper;
+
+    private HashOperations<String, Object, Collection<T>> hashListOper;
 
     /**
      * 默认过期时长，单位：秒
      */
-    private static final long DEFAULT_EXPIRE = 60 * 60 * 24 * 2;
+    private static final long DEFAULT_EXPIRE = 60 * 60 * 24 * 7;
 
     /**
-     * 不设置过期时长
+     * 批量操作分组长度
      */
-    private static final long NOT_EXPIRE = -1;
+    private static final int GROUP_SIZE = 1000;
 
+    public RedisTemplate<String, T> getRedisTemplate() {
+        return redisTemplate;
+    }
+
+    public ValueOperations<String, T> getValueOper() {
+        if (null == this.valueOper) {
+            this.valueOper = this.redisTemplate.opsForValue();
+        }
+        return this.valueOper;
+    }
+
+    public SetOperations<String, T> getSetOper() {
+        if (null == this.setOper) {
+            this.setOper = this.redisTemplate.opsForSet();
+        }
+        return this.setOper;
+    }
+
+    public ListOperations<String, T> getListOper() {
+        if (null == this.listOper) {
+            this.listOper = this.redisTemplate.opsForList();
+        }
+        return listOper;
+    }
+
+    public HashOperations<String, Object, T> getHashOper() {
+        if (null == this.hashOper) {
+            this.hashOper = this.redisTemplate.opsForHash();
+        }
+        return hashOper;
+    }
+
+    public HashOperations<String, Object, Collection<T>> getHashListOper() {
+        if (null == this.hashListOper) {
+            this.hashListOper = this.redisTemplate.opsForHash();
+        }
+        return hashListOper;
+    }
+
+    public static long getDefaultExpire() {
+        return DEFAULT_EXPIRE;
+    }
+
+    public static int getGroupSize() {
+        return GROUP_SIZE;
+    }
 
     /**
      * 判断key是否存在
@@ -58,9 +117,6 @@ public class RedisBaseDao<T> {
      * @return boolean
      */
     public boolean existsKey(String key) {
-        if (StringUtils.isEmpty(key)) {
-            return false;
-        }
         return this.redisTemplate.hasKey(key);
     }
 
@@ -82,9 +138,6 @@ public class RedisBaseDao<T> {
      * @return 修改成功返回true
      */
     public boolean renameKeyNotExist(String oldKey, String newKey) {
-        if (StringUtils.isEmpty(oldKey) || StringUtils.isEmpty(newKey)) {
-            return false;
-        }
         return this.redisTemplate.renameIfAbsent(oldKey, newKey);
     }
 
@@ -127,7 +180,13 @@ public class RedisBaseDao<T> {
      * @param time 过期时间
      * @param timeUnit 时间单位
      */
-    public void expireKey(String key, long time, TimeUnit timeUnit) {
+    public void expireKey(String key, Long time, TimeUnit timeUnit) {
+        if (time == null || time < 0) {
+            time = DEFAULT_EXPIRE;
+        }
+        if (timeUnit == null) {
+            timeUnit = TimeUnit.SECONDS;
+        }
         this.redisTemplate.expire(key, time, timeUnit);
     }
 
@@ -165,224 +224,168 @@ public class RedisBaseDao<T> {
 
     // ============================Object=============================
 
-    /**
-     * 普通缓存获取
-     *
-     * @param key 键
-     * @return 值
-     */
-    public T getObj(String key) {
-        return key == null ? null : this.redisTemplate.opsForValue().get(key);
-    }
-
 
     /**
      * 普通缓存放入
-     * 默认有效期时间2天
+     * 默认有效期时间7天
      *
      * @param key   键
      * @param value 值
      */
     public void putObj(String key, T value) {
-        this.putObj(key, value, DEFAULT_EXPIRE, TimeUnit.SECONDS);
+        this.getValueOper().set(key, value, DEFAULT_EXPIRE, TimeUnit.SECONDS);
     }
 
+
+    // ============================Map=============================
+
     /**
-     * 普通缓存放入并设置时间
+     * Map缓存放入
+     * 默认有效期时间7天
      *
      * @param key   键
      * @param value 值
-     * @param time  时间(秒) time要大于0 如果time小于等于0 将设置为默认日期2天
-     * @param unit 时间单位
      */
-    public void putObj(String key, T value, long time, TimeUnit unit) {
-        if (time > 0) {
-            this.redisTemplate.opsForValue().set(key, value, time, unit);
-        } else {
-            this.redisTemplate.opsForValue().set(key, value, DEFAULT_EXPIRE, TimeUnit.SECONDS);
-        }
+    public void putMap(String key, Map<String, T> value) {
+        this.getHashOper().putAll(key, value);
+        this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
     }
 
+    /**
+     * Map缓存放入某个值
+     * 默认有效期时间7天
+     *
+     * @param key    键
+     * @param mapKey map键
+     * @param value  值
+     */
+    public void putMapValue(String key, String mapKey, T value) {
+        this.getHashOper().put(key, mapKey, value);
+        this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Map分组缓存放入
+     * 默认有效期时间7天
+     *
+     * @param key   键
+     * @param value 值
+     */
+    public void putMapGroupList(String key, Map<String, List<T>> value) {
+        if (CollectionUtils.isEmpty(value)) {
+            return;
+        }
+        Map<String, Collection<T>> map = new HashMap<>();
+        value.forEach((k, v) -> map.put(k, new ArrayList<>(v)));
+        this.putMapGroup(key, map);
+    }
+
+    /**
+     * Map分组缓存放入
+     * 默认有效期时间7天
+     *
+     * @param key   键
+     * @param value 值
+     */
+    public void putMapGroup(String key, Map<String, Collection<T>> value) {
+        if (CollectionUtils.isEmpty(value)) {
+            return;
+        }
+        this.getHashListOper().putAll(key, value);
+        this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Map分组缓存放入某个值
+     * 默认有效期时间7天
+     *
+     * @param key   键
+     * @param mapKey map对象中的KEY值
+     * @param value 值
+     */
+    public void putMapValue(String key, Object mapKey, Collection<T> value) {
+        if (CollectionUtils.isEmpty(value)) {
+            return;
+        }
+        this.getHashListOper().put(key, mapKey, value);
+        this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 读取Map
+     * @param key   键
+     */
+    public Map<String, T> getMap(String key) {
+        Map<Object, T> map = this.getHashOper().entries(key);
+        Map<String, T> rtMap = new HashMap<>();
+        if (!CollectionUtils.isEmpty(map)) {
+            map.forEach((k, v) -> rtMap.put(String.valueOf(k), v));
+        }
+        return rtMap;
+    }
+
+    /**
+     * 读取Map分组
+     * @param key   键
+     */
+    public Map<String, List<T>> getMapGroup(String key) {
+        Map<Object, Collection<T>> map = this.getHashListOper().entries(key);
+        Map<String, List<T>> rtMap = new HashMap<>();
+        if (!CollectionUtils.isEmpty(map)) {
+            map.forEach((k, v) -> rtMap.put(String.valueOf(k), new ArrayList<>(v)));
+        }
+        return rtMap;
+    }
 
     // ============================Set=============================
 
     /**
-     * 根据key获取Set中的所有值
-     *
-     * @param key 键
-     * @return Set<T>
-     */
-    public Set<T> getSet(String key) {
-        return this.redisTemplate.opsForSet().members(key);
-    }
-
-
-    /**
-     * 判断set集合中是否存在value
-     *
-     * @param key   键
-     * @param value 值
-     * @return true 存在 false不存在
-     */
-    public boolean existsSetValue(String key, T value) {
-        return this.redisTemplate.opsForSet().isMember(key, value);
-    }
-
-    /**
      * 将数据放入set缓存
-     * 有效期时间默认2天
+     * 有效期时间默认7天
      *
      * @param key    键
      * @param values 值 列表
      * @return 成功个数
      */
-    public Long putSet(String key, Collection<T> values) {
-        return this.putSet(key, DEFAULT_EXPIRE, TimeUnit.SECONDS, values);
-    }
-
-    /**
-     * 将数据放入SET缓存
-     *
-     * @param key    键
-     * @param time   时间(秒)
-     * @param values 值 列表
-     * @return 成功个数
-     */
-    public Long putSet(String key, long time, TimeUnit unit, Collection<T> values) {
+    public Long putSet(String key, Set<T> values) {
         if (CollectionUtils.isEmpty(values)) {
             return 0L;
         }
-        return this.putSet(key, time, unit, (T[])values.toArray());
-    }
-
-    /**
-     * 将数据放入set缓存
-     * 有效期时间默认2天
-     *
-     * @param key    键
-     * @param values 值 可以是多个
-     * @return 成功个数
-     */
-    public Long putSet(String key, T... values) {
-        return this.putSet(key, DEFAULT_EXPIRE, TimeUnit.SECONDS, values);
+        return this.putSet(key, (T[])values.toArray());
     }
 
     /**
      * 将数据放入SET缓存
      *
      * @param key    键
-     * @param time   时间(秒)
      * @param values 值 可以是多个
      * @return 成功个数
      */
     @SafeVarargs
-    public final Long putSet(String key, long time, TimeUnit unit, T... values) {
+    public final Long putSet(String key, T... values) {
         if (values == null || values.length == 0) {
             return 0L;
         }
-        Long count = this.redisTemplate.opsForSet().add(key, values);
-
-        if (time > 0) {
-            this.expireKey(key, time, unit);
-        } else {
-            this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
-        }
-
+        Long count = this.getSetOper().add(key, values);
+        this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
         return count;
     }
 
-    /**
-     * 获取set缓存的长度
-     *
-     * @param key 键
-     * @return Long 长度
-     */
-    public Long getSetSize(String key) {
-        return this.redisTemplate.opsForSet().size(key);
-    }
-
-    /**
-     * 移除值为value的
-     *
-     * @param key    键
-     * @param values 值 可以是多个
-     * @return 移除的个数
-     */
-    public Long removeSetValue(String key, T... values) {
-        return this.redisTemplate.opsForSet().remove(key, values);
-    }
-
     // ===============================list=================================
-    /**
-     * 获取list缓存的内容
-     *
-     * @param key   键
-     * @param start 开始
-     * @param end   结束 0 到 -1代表所有值
-     * @return List<T>
-     */
-    public List<T> getList(String key, long start, long end) {
-        return this.redisTemplate.opsForList().range(key, start, end);
-    }
-
-    /**
-     * 获取list缓存的长度
-     *
-     * @param key 键
-     * @return Long
-     */
-    public Long getListSize(String key) {
-        return this.redisTemplate.opsForList().size(key);
-    }
-
-    /**
-     * 通过索引 获取list中的值
-     *
-     * @param key   键
-     * @param index 索引 index>=0时， 0 表头，1 第二个元素，依次类推；index<0时，-1，表尾，-2倒数第二个元素，依次类推
-     * @return T
-     */
-    public T getListIndex(String key, long index) {
-        return this.redisTemplate.opsForList().index(key, index);
-    }
 
     /**
      * 将多个对象放入List
-     * 有效期默认2天
+     * 有效期默认7天
      *
      * @param key   键
      * @param values 值
      * @return 成功数
      */
     public Long putList(String key, T... values) {
-        return this.putList(key, DEFAULT_EXPIRE, TimeUnit.SECONDS, values);
-    }
-
-    /**
-     * 将多个对象放入List
-     *
-     * @param key   键
-     * @param values 值
-     * @param time  时间
-     * @param unit 时间单位
-     * @return 成功数
-     */
-    public Long putList(String key, long time, TimeUnit unit, T... values) {
-        if (null == values) {
+        if (values == null || values.length == 0) {
             return 0L;
         }
-        return this.putList(key, time, unit, Arrays.asList(values));
-    }
-
-    /**
-     * 将集合放入缓存list
-     *
-     * @param key   键
-     * @param values 值
-     * @return 成功数
-     */
-    public Long putList(String key, Collection<T> values) {
-        return this.putList(key, DEFAULT_EXPIRE, TimeUnit.SECONDS, values);
+        return this.putList(key, Arrays.asList(values));
     }
 
     /**
@@ -390,48 +393,16 @@ public class RedisBaseDao<T> {
      *
      * @param key   键
      * @param values 值
-     * @param time  时间
-     * @param unit 时间单位
      * @return 成功数
      */
-    public Long putList(String key, long time, TimeUnit unit, Collection<T> values) {
+    public Long putList(String key, Collection<T> values) {
         if (CollectionUtils.isEmpty(values)) {
             return 0L;
         }
-
-        Long count = this.redisTemplate.opsForList().rightPushAll(key, values);
-        if (time > 0) {
-            this.expireKey(key, time, unit);
-        } else {
-            this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
-        }
-
+        Long count = this.getListOper().rightPushAll(key, values);
+        this.expireKey(key, DEFAULT_EXPIRE, TimeUnit.SECONDS);
         return count;
     }
-
-    /**
-     * 根据索引修改list中的某条数据
-     *
-     * @param key   键
-     * @param index 索引
-     * @param value 值
-     */
-    public void updateListIndex(String key, long index, T value) {
-        this.redisTemplate.opsForList().set(key, index, value);
-    }
-
-    /**
-     * 移除N个值为value
-     *
-     * @param key   键
-     * @param count 移除多少个 0表示删除全部
-     * @param value 值
-     * @return 移除的个数
-     */
-    public long removeListValue(String key, long count, T value) {
-        return this.redisTemplate.opsForList().remove(key, count, value);
-    }
-
 
     // ===============================batch=================================
     /**
@@ -451,13 +422,25 @@ public class RedisBaseDao<T> {
      * @param unit 有效期单位
      */
     public void batchInsert(Map<String, T> map, long time, TimeUnit unit) {
+        if (CollectionUtils.isEmpty(map)) {
+            return;
+        }
         RedisSerializer<String> ks = (RedisSerializer<String>) this.redisTemplate.getKeySerializer();
         RedisSerializer<T> vs = (RedisSerializer<T>) this.redisTemplate.getValueSerializer();
 
-        this.redisTemplate.executePipelined((RedisCallback<T>) conn -> {
-            map.forEach((k,v) -> conn.setEx(ks.serialize(k), TimeoutUtils.toSeconds(time, unit), vs.serialize(v)));
-            return null;
-        });
+        int i = 0;
+        final Map<String, T> finalMap = new HashMap<>();
+        for (Map.Entry<String, T> entry : map.entrySet()) {
+            finalMap.put(entry.getKey(), entry.getValue());
+            i++;
+            if (finalMap.size() >= GROUP_SIZE || i >= map.size()) {
+                this.redisTemplate.executePipelined((RedisCallback<T>) conn -> {
+                    finalMap.forEach((k,v) -> conn.setEx(ks.serialize(k), TimeoutUtils.toSeconds(time, unit), vs.serialize(v)));
+                    return null;
+                });
+                finalMap.clear();
+            }
+        }
     }
 
     /**
@@ -467,12 +450,22 @@ public class RedisBaseDao<T> {
      * @return {@link List<T>}
      */
     public List<T> batchGet(List<String> keys) {
+        if (CollectionUtils.isEmpty(keys)) {
+            return new ArrayList<>();
+        }
         RedisSerializer<String> ks = (RedisSerializer<String>) this.redisTemplate.getKeySerializer();
+        List<Object> list = new ArrayList<>();
 
-        List<Object> list = this.redisTemplate.executePipelined((RedisCallback<T>) redisConnection -> {
-            keys.forEach(key -> redisConnection.get(ks.serialize(key)));
-            return null;
-        });
+        for (int i = 0; i < Math.floor(keys.size() / GROUP_SIZE) + 1; i++) {
+            int endIndex = (i + 1) * GROUP_SIZE > keys.size() ? keys.size() : (i + 1) * GROUP_SIZE;
+            final List<String> finalSubKeys = keys.subList(i * GROUP_SIZE, endIndex);
+
+            List<Object> subList = this.redisTemplate.executePipelined((RedisCallback<T>) redisConnection -> {
+                finalSubKeys.forEach(key -> redisConnection.get(ks.serialize(key)));
+                return null;
+            });
+            list.addAll(subList);
+        }
 
         return list.stream().filter(Objects::nonNull).map(o -> (T) o).collect(Collectors.toList());
     }

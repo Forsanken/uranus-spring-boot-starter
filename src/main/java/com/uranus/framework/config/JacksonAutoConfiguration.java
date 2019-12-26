@@ -1,13 +1,4 @@
-/**
- * FileName: MvcConfig
- * Author:   chy
- * Date:     2018/10/16 13:56
- * Description: spring boot swagger swagger
- * History:
- * <author>          <time>          <version>          <desc>
- * 作者姓名           修改时间           版本号              描述
- */
-package com.uranus.framework.web.support;
+package com.uranus.framework.config;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
@@ -20,40 +11,43 @@ import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalTimeSerializer;
 import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
-import com.google.common.collect.Lists;
+import com.uranus.framework.jackson.JacksonMapper;
 import com.uranus.framework.jackson.SimpleLocalDateDeserializer;
 import com.uranus.framework.jackson.SimpleLocalTimeDeserializer;
 import com.uranus.framework.jackson.SimpleStringDeserializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 
 /**
- * 〈一句话功能简述〉<br> 
- * 〈spring boot mvc config〉
+ * 〈一句话功能简述〉<br>
+ * 〈切面自动配置〉
  *
- * @author chy 2018/10/16
+ * @author chy 2019/9/3
  * @since 1.0.0
  */
 @Configuration
-public class WebMvcSupport extends WebMvcConfigurationSupport {
+@ConditionalOnClass(ObjectMapper.class)
+@ConditionalOnProperty(prefix = "uranus", name = "jackson.enable", matchIfMissing = true)
+@Import(JacksonMapper.class)
+public class JacksonAutoConfiguration {
 
     @Bean
-    public MappingJackson2HttpMessageConverter mappingJackson2HttpMessageConverter(){
-        MappingJackson2HttpMessageConverter mappingJackson2HttpMessageConverter = new MappingJackson2HttpMessageConverter();
-        mappingJackson2HttpMessageConverter.setSupportedMediaTypes(Lists.newArrayList(MediaType.TEXT_PLAIN,MediaType.APPLICATION_JSON_UTF8));
-        ObjectMapper objectMapper= new ObjectMapper();
+    @Primary
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    public ObjectMapper jacksonObjectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(JsonParser.Feature.ALLOW_COMMENTS, true);
         objectMapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true);
         objectMapper.configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true);
@@ -62,9 +56,10 @@ public class WebMvcSupport extends WebMvcConfigurationSupport {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
         objectMapper.configure(DeserializationFeature.ACCEPT_EMPTY_ARRAY_AS_NULL_OBJECT, true);
+        objectMapper.configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
         objectMapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
         objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
-        objectMapper.setPropertyNamingStrategy(PropertyNamingStrategy.LOWER_CAMEL_CASE);
+        objectMapper.setPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE);
         objectMapper.getSerializerProvider().setNullValueSerializer(new JsonSerializer<Object>() {
             @Override
             public void serialize(Object o, JsonGenerator jsonGenerator, SerializerProvider serializerProvider) throws IOException {
@@ -74,36 +69,18 @@ public class WebMvcSupport extends WebMvcConfigurationSupport {
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.registerModule(new Jdk8Module());
         objectMapper.registerModule(new ParameterNamesModule());
+        objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
         final SimpleModule simpleModule = new SimpleModule();
         simpleModule.addDeserializer(LocalTime.class, new SimpleLocalTimeDeserializer(DateTimeFormatter.ofPattern("HH:mm:ss")));
         simpleModule.addDeserializer(String.class, new SimpleStringDeserializer());
         simpleModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         simpleModule.addDeserializer(LocalDate.class, new SimpleLocalDateDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
-        objectMapper.registerModule(simpleModule);
 
         simpleModule.addSerializer(LocalTime.class, new LocalTimeSerializer(DateTimeFormatter.ofPattern("HH:mm:ss")));
         simpleModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         simpleModule.addSerializer(LocalDate.class, new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
 
-        mappingJackson2HttpMessageConverter.setObjectMapper(objectMapper);
-        return mappingJackson2HttpMessageConverter;
-    }
-
-    @Override
-    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
-        converters.add(mappingJackson2HttpMessageConverter());
-        super.configureMessageConverters(converters);
-    }
-
-    @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        /*放行静态资源*/
-        registry.addResourceHandler("/static/**").addResourceLocations("classpath:/static/");
-        registry.addResourceHandler("/templates/**").addResourceLocations("classpath:/templates/");
-        /*放行swagger*/
-        registry.addResourceHandler("swagger-ui.html")
-                .addResourceLocations("classpath:/META-INF/resources/");
-        registry.addResourceHandler("/webjars/**")
-                .addResourceLocations("classpath:/META-INF/resources/webjars/");
+        objectMapper.registerModule(simpleModule);
+        return objectMapper;
     }
 }

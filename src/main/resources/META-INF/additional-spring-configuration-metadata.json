@@ -1,0 +1,29 @@
+{
+  "properties": [
+    {
+      "name": "uranus.swagger.enable",
+      "description": "Swagger自动配置开关",
+      "type": "java.lang.Boolean"
+    },
+    {
+      "name": "uranus.web.enable",
+      "description": "Web自动配置开关",
+      "type": "java.lang.Boolean"
+    },
+    {
+      "name": "uranus.aop.enable",
+      "description": "切面自动配置开关",
+      "type": "java.lang.Boolean"
+    },
+    {
+      "name": "uranus.redis.enable",
+      "description": "Redis自动配置开关",
+      "type": "java.lang.Boolean"
+    },
+    {
+      "name": "uranus.jackson.enable",
+      "description": "Jackson自动配置开关",
+      "type": "java.lang.Boolean"
+    }
+  ]
+}

@@ -11,7 +11,7 @@ package com.uranus.framework.aspect;
 
 import com.uranus.framework.annotate.ControllerLog;
 import com.uranus.framework.annotate.ServiceLog;
-import com.uranus.framework.jackson.JacksonUtils;
+import com.uranus.framework.jackson.JacksonMapper;
 import com.uranus.framework.util.IPv4Util;
 import com.uranus.framework.util.StringUtil;
 import com.uranus.framework.util.UserAgentUtils;
@@ -19,6 +19,7 @@ import eu.bitwalker.useragentutils.UserAgent;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -42,6 +43,9 @@ import java.util.Map;
 @Aspect
 @Component
 public class LogAspect {
+
+    @Autowired
+    private JacksonMapper jacksonMapper;
 
     /**
      * Service层切点
@@ -74,7 +78,7 @@ public class LogAspect {
             //请求方法
             String method =  joinPoint.getSignature().getName() + "()";
             //方法参数
-            String methodParam = JacksonUtils.objToJson(joinPoint.getArgs());
+            String methodParam = jacksonMapper.objToJson(joinPoint.getArgs());
             Map<String, String[]> params = request.getParameterMap();
             StringBuilder decode = new StringBuilder();
             //针对get请求
@@ -156,7 +160,7 @@ public class LogAspect {
             StringBuilder params = new StringBuilder();
             if (joinPoint.getArgs() != null && joinPoint.getArgs().length > 0) {
                 for (int i = 0; i < joinPoint.getArgs().length; i++) {
-                    params.append(JacksonUtils.objToJson(joinPoint.getArgs()[i])).append(";");
+                    params.append(jacksonMapper.objToJson(joinPoint.getArgs()[i])).append(";");
                 }
             }
             StringBuilder sb = new StringBuilder(1000);

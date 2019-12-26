@@ -9,10 +9,11 @@
  */
 package com.uranus.framework.web.filter;
 
-import com.uranus.framework.jackson.JacksonUtils;
+import com.uranus.framework.jackson.JacksonMapper;
 import com.uranus.framework.util.IPv4Util;
 import com.uranus.framework.web.enums.CommonCodeEnum;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 
@@ -33,6 +34,9 @@ import java.util.Map;
  */
 @Slf4j
 public class CrossFilter implements Filter {
+
+    @Autowired
+    private JacksonMapper jacksonMapper;
 
     private FilterConfig filterConfig = null;
 
@@ -78,7 +82,7 @@ public class CrossFilter implements Filter {
 
         if (response instanceof HttpServletResponse) {
             HttpServletResponse alteredResponse = ((HttpServletResponse) response);
-            addHeadersFor200Response(alteredResponse);
+            addHeadersFor200Response(alteredResponse, (HttpServletRequest)request);
         }
 
         Throwable problem = null;
@@ -105,10 +109,13 @@ public class CrossFilter implements Filter {
 
     }
 
-    private void addHeadersFor200Response(HttpServletResponse response) {
-        response.addHeader("Access-Control-Allow-Origin", "*");
-        response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, HEAD");
-        response.addHeader("Access-Control-Allow-Headers", "X-PINGOTHER, Origin, X-Requested-With, Content-Type, Accept");
+    private void addHeadersFor200Response(HttpServletResponse response, HttpServletRequest request) {
+        response.addHeader("Access-Control-Allow-Origin", request.getHeader("origin"));
+        //response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, HEAD");
+        //response.addHeader("Access-Control-Allow-Headers", "X-PINGOTHER, Origin, X-Requested-With, Content-Type, Accept, Authorization, Connection, User-Agent, Cookie, token");
+        response.addHeader("Access-Control-Allow-Methods", "*");
+        response.addHeader("Access-Control-Allow-Headers", "*");
+        response.setHeader("Access-Control-Allow-Credentials", "true");
         response.addHeader("Access-Control-Max-Age", "1728000");
     }
 
@@ -121,7 +128,7 @@ public class CrossFilter implements Filter {
             map.put("code", CommonCodeEnum.FAILED.getCode());
             map.put("msg", t.getMessage());
             out = response.getWriter();
-            out.print(JacksonUtils.mapToJson(map));
+            out.print(jacksonMapper.mapToJson(map));
             out.flush();
             out.close();
         } catch (Exception e) {
